@@ -1,118 +1,112 @@
-#!/usr/bin/env node
-import fs from "fs";
-import path from "path";
-import Anthropic from "@anthropic-ai/sdk";
+import { loadEnv, need } from "./lib/env.mjs";
+import { parseArgs } from "./lib/util.mjs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
-const client = new Anthropic();
+// Analiza la transcripción con Claude y decide cómo editar el reel.
+// Salida: analysis.json junto a la transcripción.
+//
+// Uso:
+//   node scripts/analyze-video.mjs work/mi-reel/transcript.json
 
-async function analyzeVideo(transcriptPath) {
-  if (!fs.existsSync(transcriptPath)) {
-    console.error(`❌ Archivo de transcripción no encontrado: ${transcriptPath}`);
-    process.exit(1);
-  }
+loadEnv();
+const args = parseArgs(process.argv.slice(2));
 
-  const transcript = JSON.parse(fs.readFileSync(transcriptPath, "utf-8"));
+const transcriptPath = resolve(args._[0] || "");
+if (!args._[0]) {
+  console.error("Uso: node scripts/analyze-video.mjs <work/…/transcript.json>");
+  process.exit(1);
+}
+if (!existsSync(transcriptPath)) {
+  console.error(`❌ No encuentro la transcripción: ${transcriptPath}`);
+  process.exit(1);
+}
 
-  console.log(`🧠 Analizando temática y estilo de edición...`);
+const apiKey = need("ANTHROPIC_API_KEY");
+const transcript = JSON.parse(readFileSync(transcriptPath, "utf8"));
 
-  const analysisPrompt = `Analiza este video y proporciona recomendaciones inteligentes de edición para un reel minimalista en estilo Vox.
+console.log("🧠 Analizando temática y estilo de edición…");
 
-TRANSCRIPCIÓN DEL VIDEO:
-"${transcript.text}"
+const prompt = `Analiza este reel y decide cómo editarlo. El estilo de edición es MINIMALISTA:
+solo se insertan 1-3 imágenes al INICIO del video, nada más. Sin efectos innecesarios.
 
-Por favor, proporciona un análisis JSON con la siguiente estructura:
+DURACIÓN: ${transcript.video.durationSec.toFixed(1)} segundos
+
+TRANSCRIPCIÓN:
+"""
+${transcript.text}
+"""
+
+Responde SOLO con un JSON válido (sin markdown, sin explicaciones) con esta forma exacta:
 {
-  "theme": "tema principal del video (1-3 palabras)",
-  "category": "categoría (educativo/viral/tutorial/lifestyle/noticia/humor/otro)",
-  "tone": "tono detectado (energético/calmado/informativo/satírico/inspirador/etc)",
-  "energy": "nivel de energía de 1 a 10",
-  "pacing": "ritmo (rápido/moderado/lento)",
-  "keyMoments": [
-    {
-      "timestamp": "descripción del momento",
-      "type": "gancho/punto-clave/cierre",
-      "importance": "alta/media/baja"
-    }
-  ],
-  "imageKeywords": [
-    "palabra clave 1",
-    "palabra clave 2",
-    "palabra clave 3",
-    "palabra clave 4",
-    "palabra clave 5"
-  ],
-  "imageInsertionPoint": "momento exacto donde insertar imágenes (al inicio, en la intro, etc)",
+  "theme": "tema principal, 1-3 palabras",
+  "category": "educativo|viral|tutorial|lifestyle|noticia|humor|otro",
+  "tone": "energético|calmado|informativo|satírico|inspirador",
+  "energy": 7,
+  "pacing": "rápido|moderado|lento",
+  "imageKeywords": ["búsqueda concreta 1", "búsqueda concreta 2", "búsqueda concreta 3"],
   "editingRecommendations": {
-    "numImages": "cantidad de imágenes sugeridas (1-3)",
-    "imageStyle": "estilo recomendado (cartoon/foto-real/infografía/minimalista/otra)",
-    "transitionStyle": "tipo de transición (fade/slide/zoom/corte)",
-    "musicNeeded": true/false,
-    "musicGenre": "género sugerido si es necesario",
-    "colorGradeNeeded": true/false,
-    "suggestedColorTone": "tono de color (cálido/frío/neutral)",
-    "captionsNeeded": true/false,
-    "vfxNeeded": false,
-    "minimalistRationale": "explicación de por qué esta es una buena edición minimalista"
+    "numImages": 2,
+    "imageStyle": "foto-real|cartoon|infografía|minimalista",
+    "transitionStyle": "fade|corte",
+    "musicNeeded": false,
+    "musicGenre": null,
+    "colorGradeNeeded": false,
+    "suggestedColorTone": "cálido|frío|neutral",
+    "captionsNeeded": false,
+    "minimalistRationale": "por qué esta edición es la correcta para este video"
   },
   "contentAnalysis": "análisis breve de cómo abordar la edición"
 }
 
-Responde SOLO con el JSON válido, sin explicaciones adicionales.`;
+Reglas:
+- "imageKeywords": entre 3 y 5 búsquedas CONCRETAS y visuales para Google Images, en español.
+  Deben ilustrar el tema del video. Nada abstracto.
+- "numImages": entre 1 y 3. Si el video ya es visualmente rico o muy corto, usa 1.`;
 
-  try {
-    const response = await client.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 2000,
-      messages: [
-        {
-          role: "user",
-          content: analysisPrompt,
-        },
-      ],
-    });
+const res = await fetch("https://api.anthropic.com/v1/messages", {
+  method: "POST",
+  headers: {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({
+    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
+    max_tokens: 2000,
+    messages: [{ role: "user", content: prompt }],
+  }),
+});
 
-    let analysisText =
-      response.content[0].type === "text" ? response.content[0].text : "";
-
-    // Limpiar si tiene markdown
-    analysisText = analysisText
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
-
-    const analysis = JSON.parse(analysisText);
-
-    const result = {
-      transcriptPath,
-      videoTheme: transcript.fileName,
-      analysis,
-      timestamp: new Date().toISOString(),
-    };
-
-    const outputPath = path.join(
-      path.dirname(transcriptPath),
-      `${path.basename(transcriptPath, path.extname(transcriptPath))}-analysis.json`
-    );
-
-    fs.writeFileSync(outputPath, JSON.stringify(result, null, 2));
-
-    console.log(`✅ Análisis completado: ${outputPath}`);
-    console.log(`📊 Temática: ${analysis.theme}`);
-    console.log(`🎬 Categoría: ${analysis.category}`);
-    console.log(`🎨 Recomendaciones: ${analysis.editingRecommendations.numImages} imágenes, estilo ${analysis.editingRecommendations.imageStyle}`);
-
-    return result;
-  } catch (error) {
-    console.error("❌ Error en análisis:", error.message);
-    process.exit(1);
-  }
-}
-
-const transcriptPath = process.argv[2];
-if (!transcriptPath) {
-  console.error("Uso: node analyze-video.mjs <archivo-transcript.json>");
+if (!res.ok) {
+  console.error(`❌ Anthropic ${res.status}: ${(await res.text()).slice(0, 300)}`);
   process.exit(1);
 }
 
-const result = await analyzeVideo(transcriptPath);
-console.log(JSON.stringify(result, null, 2));
+const body = await res.json();
+const raw = body.content?.find((c) => c.type === "text")?.text ?? "";
+const cleaned = raw.replace(/^```(?:json)?\n?/, "").replace(/```\s*$/, "").trim();
+
+let analysis;
+try {
+  analysis = JSON.parse(cleaned);
+} catch {
+  console.error(`❌ Claude no devolvió JSON válido:\n${cleaned.slice(0, 300)}`);
+  process.exit(1);
+}
+
+const result = {
+  transcriptPath,
+  fileName: transcript.fileName,
+  video: transcript.video,
+  analysis,
+};
+
+const outPath = resolve(dirname(transcriptPath), "analysis.json");
+writeFileSync(outPath, JSON.stringify(result, null, 2));
+
+const rec = analysis.editingRecommendations;
+console.log(`\n✅ Análisis: ${outPath}`);
+console.log(`📊 Tema: ${analysis.theme} (${analysis.category}, tono ${analysis.tone})`);
+console.log(`🎨 Plan: ${rec.numImages} imagen(es) estilo ${rec.imageStyle}`);
+console.log(`🔎 Búsquedas: ${analysis.imageKeywords.join(", ")}`);

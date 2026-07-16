@@ -10,5 +10,8 @@ out
 # Recursos generados por video (audio/imágenes/música pesadas)
 public/media/
 
+# Material de los reels que se editan (video fuente, audio, imágenes descargadas)
+public/reel/
+
 # El guión concreto de cada video (se genera; el ejemplo sí se versiona)
 input/scenes.json

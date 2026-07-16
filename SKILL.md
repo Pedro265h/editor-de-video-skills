@@ -101,46 +101,55 @@ Eso es. Todo lo demás es automático:
 
 ## 🔧 Requisitos (además de video-vox base)
 
-- **OPENAI_API_KEY** — en `.env` (transcripción con Whisper)
-- **APIFY_API_TOKEN** — en `.env` (búsqueda inteligente de imágenes)
-
-Ambas van en tu `.env`, ejemplo:
+Tres llaves en `.env` (los nombres exactos están en `.env.example`):
 ```
-OPENAI_API_KEY=sk-...
-APIFY_API_TOKEN=apify_...
+OPENAI_API_KEY=      # transcripción con Whisper
+ANTHROPIC_API_KEY=   # análisis de temática y decisiones de edición
+APIFY_TOKEN=         # búsqueda de imágenes (la misma que las fotos reales)
 ```
+También necesita **ffmpeg** (`brew install ffmpeg`) — se usa para extraer el audio y leer la duración real del video.
 
 ## 📊 Salida
 
-En `out/reel-editado-{nombre}.mp4`:
-- Video 9:16 (vertical)
-- Imágenes temáticas al inicio (1-3 según análisis)
-- Transiciones minimalistas
-- Audio original + opcional música de fondo
+`out/reel-editado-<slug>.mp4` — el video con las imágenes al inicio, misma
+duración, mismas dimensiones y audio original intactos.
 
-También genera análisis JSON:
-- `*-transcript.json` — lo que dice el video
-- `*-analysis.json` — temática, tono, recomendaciones
-- `*-images.json` — imágenes descargadas
-- `*-edit-plan.json` — plan de edición exacto aplicado
+Todo el material de trabajo queda en `public/reel/<slug>/` (ignorado por git):
+- `source.mp4` — copia del video original (Remotion sirve assets desde `public/`)
+- `audio.mp3` — audio extraído para Whisper
+- `transcript.json` — lo que dice el video, con timestamps
+- `analysis.json` — tema, tono, energía y recomendaciones
+- `images/` + `images.json` — imágenes descargadas
+- `edit-plan.json` — el plan exacto que se renderizó
+
+El plan también se copia a `src/data/edit-plan.json`, que es lo que lee
+`src/Root.tsx` para definir la composición `EditReel`.
 
 ## 💡 Cómo decide qué editar
 
-El motor inteligente analiza:
-- **Temática** — ¿de qué trata?
-- **Tono** — ¿energético, calmado, educativo?
-- **Puntos clave** — dónde insertar visuals
-- **Estilo de imagen recomendado** — cartoon, foto real, infografía
-- **Minimalismo** — solo lo esencial
+Claude lee la transcripción y devuelve: tema, categoría, tono, energía,
+las búsquedas de imágenes concretas, y cuántas insertar (1-3).
+`edit-decision-engine.mjs` convierte eso en frames exactos contra la duración
+real del video (medida con ffprobe) y falla temprano si las imágenes no caben.
 
-Resultado: edición smart sin tocar manualmente nada.
+## 🩺 Si algo falla
+
+| Error | Causa |
+|---|---|
+| `Falta X en .env` | Copia `.env.example` a `.env` y rellena la llave |
+| `No encuentro "ffmpeg"` | `brew install ffmpeg` |
+| `El audio pesa … máximo 25 MB` | El video es muy largo — recórtalo |
+| `Las N imágenes ocupan Xs pero el video dura Ys` | Video muy corto para 2-3 imágenes |
+| `Apify no devolvió imágenes` | Sin créditos, o las búsquedas no dieron resultados |
 
 ## 📝 Notas
 
-- La transcripción solo funciona bien con audio en español claro
-- Apify debe tener créditos disponibles (barato, ~0.01-0.05 USD por búsqueda)
-- OpenAI Whisper cuesta ~0.01 USD por minuto de video
-- La edición es **100% minimalista** — sin efectos innecesarios
+- La transcripción asume **audio en español**.
+- Costo por reel: Whisper ~0.006 USD/min + 1 llamada a Claude + ~0.03 USD de Apify.
+- La edición es **minimalista a propósito**: solo imágenes al inicio, sin música
+  añadida, sin color grading, sin captions. El audio original nunca se toca.
+- Los pasos son idempotentes por archivo: puedes correr un script suelto
+  (`npm run analyze -- public/reel/<slug>/transcript.json`) sin rehacer todo.
 
 ---
 

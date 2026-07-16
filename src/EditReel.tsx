@@ -1,129 +1,91 @@
+import React from "react";
 import {
   AbsoluteFill,
-  Composition,
   Img,
   OffthreadVideo,
-  spring,
+  Sequence,
+  interpolate,
+  staticFile,
   useCurrentFrame,
-  useVideoConfig,
-  Audio,
 } from "remotion";
-import React from "react";
 
-interface EditReelProps {
+export type Overlay = {
+  file: string;
+  query: string;
+  from: number;
+  fadeIn: number;
+  hold: number;
+  fadeOut: number;
+  durationInFrames: number;
+};
+
+export type EditPlan = {
   videoPath: string;
-  editPlan: {
-    imageInsertion: {
-      count: number;
-      selectedImages: Array<{ filePath: string; fileName: string }>;
-      timing: {
-        fadeIn: number;
-        displayDuration: number;
-        fadeOut: number;
-      };
-    };
-    transitions: {
-      type: string;
-      duration: number;
-    };
+  composition: {
+    fps: number;
+    width: number;
+    height: number;
+    durationInFrames: number;
   };
-}
+  overlays: Overlay[];
+  transition: string;
+};
 
-const ImageOverlay: React.FC<{
-  imagePath: string;
-  startFrame: number;
-  fadeInDuration: number;
-  displayDuration: number;
-  fadeOutDuration: number;
-}> = ({ imagePath, startFrame, fadeInDuration, displayDuration, fadeOutDuration }) => {
+/** Los assets se sirven desde public/, así que basta la ruta relativa. */
+const asset = (p: string) => staticFile(p);
+
+const ImageOverlay: React.FC<{ overlay: Overlay; hardCut: boolean }> = ({
+  overlay,
+  hardCut,
+}) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fadeIn, hold, fadeOut, durationInFrames } = overlay;
 
-  const startMs = startFrame;
-  const fadeInMs = fadeInDuration;
-  const displayMs = displayDuration;
-  const fadeOutMs = fadeOutDuration;
+  const opacity = hardCut
+    ? 1
+    : interpolate(
+        frame,
+        [0, fadeIn, fadeIn + hold, durationInFrames],
+        [0, 1, 1, 0],
+        { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+      );
 
-  const frameInMs = frame / (fps / 1000);
-
-  let opacity = 0;
-
-  if (frameInMs >= startMs && frameInMs < startMs + fadeInMs) {
-    opacity = (frameInMs - startMs) / fadeInMs;
-  } else if (frameInMs >= startMs + fadeInMs && frameInMs < startMs + fadeInMs + displayMs) {
-    opacity = 1;
-  } else if (
-    frameInMs >= startMs + fadeInMs + displayMs &&
-    frameInMs < startMs + fadeInMs + displayMs + fadeOutMs
-  ) {
-    opacity = 1 - (frameInMs - (startMs + fadeInMs + displayMs)) / fadeOutMs;
-  }
-
-  const scale = 1 + (frameInMs - startMs) * 0.0002;
+  // Un zoom muy leve para que la imagen no se sienta congelada.
+  const scale = interpolate(frame, [0, durationInFrames], [1, 1.04], {
+    extrapolateRight: "clamp",
+  });
 
   return (
-    <AbsoluteFill
-      style={{
-        opacity,
-        transform: `scale(${Math.max(1, Math.min(scale, 1.05))})`,
-      }}
-    >
-      <Img src={`file://${imagePath}`} style={{ width: "100%", height: "100%" }} />
+    <AbsoluteFill style={{ opacity, backgroundColor: "#000" }}>
+      <Img
+        src={asset(overlay.file)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: `scale(${scale})`,
+        }}
+      />
     </AbsoluteFill>
   );
 };
 
-export const EditReel: React.FC<EditReelProps> = ({ videoPath, editPlan }) => {
-  const { width, height, fps } = useVideoConfig();
-
-  const imageInsertionDurationFrames =
-    editPlan.imageInsertion.count *
-    ((editPlan.imageInsertion.timing.fadeIn +
-      editPlan.imageInsertion.timing.displayDuration +
-      editPlan.imageInsertion.timing.fadeOut) /
-      1000) *
-    fps;
+export const EditReel: React.FC<{ plan: EditPlan }> = ({ plan }) => {
+  const hardCut = plan.transition === "corte";
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {/* Video original */}
-      <OffthreadVideo src={`file://${videoPath}`} />
+      <OffthreadVideo src={asset(plan.videoPath)} />
 
-      {/* Imágenes al inicio */}
-      {editPlan.imageInsertion.selectedImages.map((image, index) => {
-        const startFrame =
-          (index *
-            (editPlan.imageInsertion.timing.fadeIn +
-              editPlan.imageInsertion.timing.displayDuration +
-              editPlan.imageInsertion.timing.fadeOut)) /
-          1000 *
-          fps;
-
-        return (
-          <ImageOverlay
-            key={`${image.fileName}-${index}`}
-            imagePath={image.filePath}
-            startFrame={startFrame}
-            fadeInDuration={editPlan.imageInsertion.timing.fadeIn}
-            displayDuration={editPlan.imageInsertion.timing.displayDuration}
-            fadeOutDuration={editPlan.imageInsertion.timing.fadeOut}
-          />
-        );
-      })}
+      {plan.overlays.map((overlay, i) => (
+        <Sequence
+          key={`${overlay.query}-${i}`}
+          from={overlay.from}
+          durationInFrames={overlay.durationInFrames}
+        >
+          <ImageOverlay overlay={overlay} hardCut={hardCut} />
+        </Sequence>
+      ))}
     </AbsoluteFill>
-  );
-};
-
-export const EditReelComposition: React.FC<{ config: EditReelProps }> = ({ config }) => {
-  return (
-    <Composition
-      id="EditReel"
-      component={EditReel}
-      durationInFrames={300 * 30}
-      fps={30}
-      width={1080}
-      height={1920}
-      defaultProps={config}
-    />
   );
 };

@@ -1,115 +1,96 @@
-#!/usr/bin/env node
-import fs from "fs";
-import path from "path";
+import { parseArgs } from "./lib/util.mjs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 
-async function generateEditPlan(analysisPath, imagesPath) {
-  if (!fs.existsSync(analysisPath) || !fs.existsSync(imagesPath)) {
-    console.error("❌ Archivos de análisis e imágenes requeridos");
-    process.exit(1);
-  }
+// Convierte el análisis + las imágenes descargadas en un plan de edición
+// concreto que Remotion puede renderizar (todo en frames, sin ambigüedad).
+// Escribe src/data/edit-plan.json, que es lo que lee Root.tsx.
+//
+// Uso:
+//   node scripts/edit-decision-engine.mjs public/reel/mi-reel/analysis.json public/reel/mi-reel/images.json
 
-  const analysis = JSON.parse(fs.readFileSync(analysisPath, "utf-8"));
-  const images = JSON.parse(fs.readFileSync(imagesPath, "utf-8"));
+const PUBLIC_DIR = resolve("public");
 
-  console.log(`🎬 Generando plan de edición inteligente...`);
-
-  const editingRec = analysis.analysis.editingRecommendations;
-  const availableImages = images.images.length;
-
-  // Lógica inteligente de decisión
-  const imagesToUse = Math.min(parseInt(editingRec.numImages), availableImages, 3);
-
-  const editPlan = {
-    videoMetadata: {
-      theme: analysis.analysis.theme,
-      category: analysis.analysis.category,
-      tone: analysis.analysis.tone,
-      energy: analysis.analysis.energy,
-    },
-    editingStrategy: {
-      type: "minimalista-inicio",
-      description: "Agregar imágenes inteligentes al inicio del video",
-      principle: "Menos es más - solo lo esencial para complementar",
-    },
-    imageInsertion: {
-      count: imagesToUse,
-      position: "inicio (primeros 0-2 segundos)",
-      selectedImages: images.images.slice(0, imagesToUse),
-      timing: {
-        fadeIn: 300,
-        displayDuration: imagesToUse === 1 ? 2000 : 1500,
-        fadeOut: 300,
-        totalDuration: imagesToUse * 2000,
-      },
-    },
-    transitions: {
-      type: editingRec.transitionStyle,
-      duration: 400,
-      easing: "ease-in-out",
-    },
-    audio: {
-      preserveOriginal: true,
-      addMusic: editingRec.musicNeeded,
-      musicGenre: editingRec.musicGenre || "subtle-background",
-      addSFX: false,
-      description: "Mantener audio original, fondo musical opcional",
-    },
-    colorGrade: {
-      apply: editingRec.colorGradeNeeded,
-      tone: editingRec.suggestedColorTone || "neutral",
-      intensity: "suave",
-      description: editingRec.colorGradeNeeded
-        ? `Aplicar tono ${editingRec.suggestedColorTone} ligero`
-        : "No aplicar cambios de color",
-    },
-    captions: {
-      add: editingRec.captionsNeeded,
-      placement: "bottom",
-      style: "minimalista",
-      description: editingRec.captionsNeeded
-        ? "Agregar captions en puntos clave (minimalista)"
-        : "No agregar captions",
-    },
-    vfx: {
-      apply: editingRec.vfxNeeded || false,
-      description: "Evitar efectos innecesarios - mantener minimalismo",
-    },
-    outputFormat: {
-      aspectRatio: "9:16",
-      duration: "original",
-      codec: "h264",
-      bitrate: "8000k",
-    },
-    rationale: editingRec.minimalistRationale,
-    contentAnalysis: analysis.analysis.contentAnalysis,
-    timestamp: new Date().toISOString(),
-  };
-
-  const outputPath = path.join(
-    path.dirname(analysisPath),
-    `${path.basename(analysisPath, path.extname(analysisPath))}-edit-plan.json`
-  );
-
-  fs.writeFileSync(outputPath, JSON.stringify(editPlan, null, 2));
-
-  console.log(`✅ Plan de edición generado`);
-  console.log(`🖼️  ${imagesToUse} imagen(s) al inicio`);
-  console.log(`🎵 Música: ${editingRec.musicNeeded ? "Sí" : "No"}`);
-  console.log(`📝 Captions: ${editingRec.captionsNeeded ? "Sí" : "No"}`);
-  console.log(`💾 Plan guardado: ${outputPath}`);
-
-  return editPlan;
+const args = parseArgs(process.argv.slice(2));
+if (!args._[0] || !args._[1]) {
+  console.error("Uso: node scripts/edit-decision-engine.mjs <analysis.json> <images.json>");
+  process.exit(1);
 }
 
-const analysisPath = process.argv[2];
-const imagesPath = process.argv[3];
+const analysisPath = resolve(args._[0]);
+const imagesPath = resolve(args._[1]);
+for (const p of [analysisPath, imagesPath]) {
+  if (!existsSync(p)) {
+    console.error(`❌ No encuentro: ${p}`);
+    process.exit(1);
+  }
+}
 
-if (!analysisPath || !imagesPath) {
+const data = JSON.parse(readFileSync(analysisPath, "utf8"));
+const imagesData = JSON.parse(readFileSync(imagesPath, "utf8"));
+
+const { analysis, video, videoSrc } = data;
+const rec = analysis.editingRecommendations;
+const fps = video.fps;
+
+const images = imagesData.images.slice(0, Math.min(Number(rec.numImages) || 1, 3));
+if (images.length === 0) {
+  console.error("❌ No hay imágenes que insertar.");
+  process.exit(1);
+}
+
+// Timing en frames. Cada imagen: fade in → visible → fade out.
+const FADE = Math.round(0.3 * fps);
+const HOLD = Math.round((images.length === 1 ? 2.0 : 1.5) * fps);
+const perImage = FADE + HOLD + FADE;
+
+const overlays = images.map((img, i) => ({
+  // staticFile() resuelve desde public/, así que la ruta va relativa a esa carpeta.
+  file: relative(PUBLIC_DIR, img.file),
+  query: img.query,
+  from: i * perImage,
+  fadeIn: FADE,
+  hold: HOLD,
+  fadeOut: FADE,
+  durationInFrames: perImage,
+}));
+
+const overlayEnd = overlays.length * perImage;
+if (overlayEnd > video.durationInFrames) {
   console.error(
-    "Uso: node edit-decision-engine.mjs <archivo-analysis.json> <archivo-images.json>"
+    `❌ Las ${images.length} imágenes ocupan ${(overlayEnd / fps).toFixed(1)}s pero el video ` +
+      `dura ${video.durationSec.toFixed(1)}s. Usa menos imágenes.`
   );
   process.exit(1);
 }
 
-const plan = await generateEditPlan(analysisPath, imagesPath);
-console.log(JSON.stringify(plan, null, 2));
+const plan = {
+  slug: data.slug,
+  videoPath: videoSrc,
+  meta: {
+    theme: analysis.theme,
+    category: analysis.category,
+    tone: analysis.tone,
+    energy: analysis.energy,
+  },
+  strategy: { type: "minimalista-inicio", rationale: rec.minimalistRationale },
+  composition: {
+    fps,
+    width: video.width,
+    height: video.height,
+    durationInFrames: video.durationInFrames,
+  },
+  overlays,
+  transition: rec.transitionStyle === "corte" ? "corte" : "fade",
+  audio: { preserveOriginal: true, addMusic: false },
+  colorGrade: { apply: false },
+  captions: { add: false },
+};
+
+// Copia junto al resto del material (trazabilidad) y en src/data (lo que lee Remotion).
+writeFileSync(resolve(dirname(analysisPath), "edit-plan.json"), JSON.stringify(plan, null, 2));
+writeFileSync(resolve("src/data/edit-plan.json"), JSON.stringify(plan, null, 2));
+
+console.log(`✅ Plan de edición: src/data/edit-plan.json`);
+console.log(`🖼️  ${overlays.length} imagen(es) en los primeros ${(overlayEnd / fps).toFixed(1)}s`);
+console.log(`🎞️  ${video.durationInFrames} frames @ ${fps} fps (${video.durationSec.toFixed(1)}s)`);

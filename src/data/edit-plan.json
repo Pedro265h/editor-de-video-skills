@@ -1,0 +1,25 @@
+{
+  "slug": "sin-reel",
+  "videoPath": "",
+  "meta": {
+    "theme": "",
+    "category": "",
+    "tone": "",
+    "energy": 0
+  },
+  "strategy": {
+    "type": "minimalista-inicio",
+    "rationale": "Placeholder — corre `npm run edit:reel -- <video.mp4>` para generar el plan real."
+  },
+  "composition": {
+    "fps": 30,
+    "width": 1080,
+    "height": 1920,
+    "durationInFrames": 30
+  },
+  "overlays": [],
+  "transition": "fade",
+  "audio": { "preserveOriginal": true, "addMusic": false },
+  "colorGrade": { "apply": false },
+  "captions": { "add": false }
+}

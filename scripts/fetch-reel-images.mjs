@@ -1,162 +1,112 @@
-#!/usr/bin/env node
-import fs from "fs";
-import path from "path";
-import fetch from "node-fetch";
-import { fileURLToPath } from "url";
+import { loadEnv, need } from "./lib/env.mjs";
+import { parseArgs, download, ensureDir, slug, kb } from "./lib/util.mjs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Descarga las imágenes que pidió el análisis (Google Images vía Apify).
+// Mismo actor y misma llamada que scripts/fetch-photos.mjs.
+//
+// Uso:
+//   node scripts/fetch-reel-images.mjs work/mi-reel/analysis.json
 
-async function fetchReelImages(analysisPath) {
-  if (!fs.existsSync(analysisPath)) {
-    console.error(`❌ Archivo de análisis no encontrado: ${analysisPath}`);
-    process.exit(1);
-  }
+loadEnv();
+const args = parseArgs(process.argv.slice(2));
 
-  if (!process.env.APIFY_API_TOKEN) {
-    console.error("❌ APIFY_API_TOKEN no está definida en .env");
-    process.exit(1);
-  }
-
-  const analysisData = JSON.parse(fs.readFileSync(analysisPath, "utf-8"));
-  const keywords = analysisData.analysis.imageKeywords || [];
-  const imageStyle = analysisData.analysis.editingRecommendations.imageStyle;
-
-  console.log(`🖼️  Buscando imágenes para: ${keywords.join(", ")}`);
-
-  const outputDir = path.join(__dirname, "../public/media/reel-images");
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  const images = [];
-
-  for (let i = 0; i < keywords.length; i++) {
-    const keyword = keywords[i];
-
-    try {
-      console.log(`🔍 Buscando: "${keyword}" (estilo: ${imageStyle})`);
-
-      const actorInput = {
-        queries: [keyword],
-        resultsPerPage: 5,
-        imageFormat: "any",
-        minSize: 500,
-        language: "es",
-      };
-
-      const runResponse = await fetch(
-        "https://api.apify.com/v2/acts/apify~google-images-scraper/runs",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.APIFY_API_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ actorId: "apify~google-images-scraper", input: actorInput }),
-        }
-      );
-
-      if (!runResponse.ok) {
-        console.warn(`⚠️  No se pudo buscar "${keyword}"`);
-        continue;
-      }
-
-      const runData = await runResponse.json();
-      const runId = runData.data.id;
-
-      // Esperar a que termine
-      let completed = false;
-      let attempts = 0;
-      while (!completed && attempts < 30) {
-        const statusResponse = await fetch(
-          `https://api.apify.com/v2/acts/apify~google-images-scraper/runs/${runId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.APIFY_API_TOKEN}`,
-            },
-          }
-        );
-        const statusData = await statusResponse.json();
-        if (statusData.data.status === "SUCCEEDED") {
-          completed = true;
-        } else if (statusData.data.status === "FAILED") {
-          console.warn(`⚠️  La búsqueda de "${keyword}" falló`);
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-        attempts++;
-      }
-
-      if (completed) {
-        const resultsResponse = await fetch(
-          `https://api.apify.com/v2/acts/apify~google-images-scraper/runs/${runId}/dataset/items`,
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.APIFY_API_TOKEN}`,
-            },
-          }
-        );
-
-        const results = await resultsResponse.json();
-
-        if (results.data && results.data.length > 0) {
-          const imageUrl = results.data[0].url;
-          const fileName = `${keyword.replace(/\s+/g, "-").toLowerCase()}-${i}.jpg`;
-          const filePath = path.join(outputDir, fileName);
-
-          // Descargar imagen
-          const imgResponse = await fetch(imageUrl);
-          const buffer = await imgResponse.buffer();
-          fs.writeFileSync(filePath, buffer);
-
-          images.push({
-            keyword,
-            fileName,
-            filePath,
-            url: imageUrl,
-            downloadedAt: new Date().toISOString(),
-          });
-
-          console.log(`✅ Imagen guardada: ${fileName}`);
-        }
-      }
-
-      // Delay entre búsquedas para no saturar
-      await new Promise((r) => setTimeout(r, 2000));
-    } catch (error) {
-      console.warn(`⚠️  Error buscando "${keyword}":`, error.message);
-    }
-  }
-
-  const result = {
-    analysisPath,
-    imageStyle,
-    totalRequested: keywords.length,
-    totalDownloaded: images.length,
-    images,
-    outputDir,
-    timestamp: new Date().toISOString(),
-  };
-
-  const resultPath = path.join(
-    path.dirname(analysisPath),
-    `${path.basename(analysisPath, path.extname(analysisPath))}-images.json`
-  );
-
-  fs.writeFileSync(resultPath, JSON.stringify(result, null, 2));
-
-  console.log(`\n✅ Descarga de imágenes completada`);
-  console.log(`📊 ${images.length}/${keywords.length} imágenes descargadas`);
-  console.log(`💾 Resultado guardado en: ${resultPath}`);
-
-  return result;
+const analysisPath = resolve(args._[0] || "");
+if (!args._[0]) {
+  console.error("Uso: node scripts/fetch-reel-images.mjs <work/…/analysis.json>");
+  process.exit(1);
 }
-
-const analysisPath = process.argv[2];
-if (!analysisPath) {
-  console.error("Uso: node fetch-reel-images.mjs <archivo-analysis.json>");
+if (!existsSync(analysisPath)) {
+  console.error(`❌ No encuentro el análisis: ${analysisPath}`);
   process.exit(1);
 }
 
-const result = await fetchReelImages(analysisPath);
-console.log(JSON.stringify(result, null, 2));
+const token = need("APIFY_TOKEN");
+const actor = process.env.APIFY_IMAGES_ACTOR || "automation-lab~google-images-scraper";
+
+const data = JSON.parse(readFileSync(analysisPath, "utf8"));
+const { imageKeywords, editingRecommendations: rec } = data.analysis;
+
+// Pide una imagen extra por si alguna descarga falla, pero sin pasarse:
+// el actor cobra por resultado.
+const wanted = Math.min(Number(rec.numImages) || 1, 3);
+const perQuery = 2;
+const queries = imageKeywords.slice(0, wanted + 1);
+
+const outDir = resolve(dirname(analysisPath), "images");
+ensureDir(outDir);
+
+console.log(`🔎 Buscando imágenes para: ${queries.join(", ")}`);
+
+const input = {
+  queries,
+  maxResultsPerQuery: perQuery,
+  language: process.env.APIFY_LANGUAGE || "es",
+  country: process.env.APIFY_COUNTRY || "mx",
+  safeSearch: "moderate",
+};
+if (rec.imageStyle === "foto-real") input.imageType = "photo";
+if (rec.imageStyle === "cartoon") input.imageType = "clipart";
+input.imageSize = "large";
+
+const res = await fetch(
+  `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }
+);
+
+if (!res.ok) {
+  console.error(`❌ Apify ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  process.exit(1);
+}
+
+const items = await res.json();
+if (!Array.isArray(items) || items.length === 0) {
+  console.error("❌ Apify no devolvió imágenes. Revisa tus créditos o las búsquedas.");
+  process.exit(1);
+}
+
+const pickUrl = (it) => it.imageUrl || it.image || it.original || it.contentUrl || it.url;
+
+// Una imagen por búsqueda, para que no salgan tres variantes de lo mismo.
+const byQuery = new Map();
+for (const it of items) {
+  const q = it.searchQuery || it.query || queries[0];
+  if (!byQuery.has(q)) byQuery.set(q, []);
+  byQuery.get(q).push(it);
+}
+
+const images = [];
+for (const [query, candidates] of byQuery) {
+  if (images.length >= wanted) break;
+  for (const it of candidates) {
+    const url = pickUrl(it);
+    if (!url || !/^https?:\/\//.test(url)) continue;
+    const ext = (url.split("?")[0].match(/\.(jpe?g|png|webp)$/i) || [, "jpg"])[1].toLowerCase();
+    const file = resolve(outDir, `${String(images.length + 1).padStart(2, "0")}-${slug(query, 20)}.${ext}`);
+    try {
+      const { bytes } = await download(url, file);
+      images.push({ query, file, url, title: it.title || null });
+      console.log(`  ✅ ${images.length}. ${slug(query, 20)} (${kb(bytes)})`);
+      break;
+    } catch (e) {
+      console.log(`  ⚠️  saltada (${e.message.slice(0, 40)})`);
+    }
+  }
+}
+
+if (images.length === 0) {
+  console.error("❌ No se pudo descargar ninguna imagen.");
+  process.exit(1);
+}
+
+const result = { analysisPath, imageStyle: rec.imageStyle, wanted, images, outDir };
+const outPath = resolve(dirname(analysisPath), "images.json");
+writeFileSync(outPath, JSON.stringify(result, null, 2));
+
+console.log(`\n✅ ${images.length}/${wanted} imágenes en ${outDir}`);
+console.log(`💾 ${outPath}`);
