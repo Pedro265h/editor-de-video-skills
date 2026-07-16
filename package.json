@@ -13,7 +13,12 @@
     "gen:voice": "node scripts/generate-voice.mjs",
     "gen:image": "node scripts/generate-image.mjs",
     "gen:music": "node scripts/generate-music.mjs",
-    "gen:photos": "node scripts/fetch-photos.mjs"
+    "gen:photos": "node scripts/fetch-photos.mjs",
+    "transcribe": "node scripts/transcribe-video.mjs",
+    "analyze": "node scripts/analyze-video.mjs",
+    "fetch:images": "node scripts/fetch-reel-images.mjs",
+    "edit:plan": "node scripts/edit-decision-engine.mjs",
+    "edit:reel": "node scripts/edit-reel.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.487",

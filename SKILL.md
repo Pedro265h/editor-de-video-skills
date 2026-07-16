@@ -72,7 +72,79 @@ Sale en `out/video.mp4`. Cópialo a `out/<slug-del-título>.mp4`.
 ### 4. Entrega
 Abre el `.mp4` (`open out/<slug>.mp4`) y reporta: tema, nº de escenas, duración. Ofrece ajustes (voz, música, timing).
 
-## Notas
+---
+
+# 🎬 VIDEO-VOX EDITOR — Edita tus reels existentes
+
+Toma un video MP4 que ya tienes, analízalo inteligentemente y edítalo en estilo Vox con imágenes temáticas al inicio.
+
+## ✨ Qué hace
+
+1. **Transcribe** tu video (OpenAI Whisper)
+2. **Analiza** la temática, tono y energía (Claude)
+3. **Busca imágenes** inteligentes con Apify según el contenido
+4. **Genera plan de edición** minimalista automático
+5. **Renderiza** el video editado en 9:16 listo para publicar
+
+## 🎯 Uso
+
+```bash
+npm run edit:reel -- ./videos/mi-reel.mp4
+```
+
+Eso es. Todo lo demás es automático:
+- ✅ Transcribe
+- ✅ Analiza temática
+- ✅ Descarga imágenes relevantes
+- ✅ Decide qué editar (y cómo)
+- ✅ Renderiza video final
+
+## 🔧 Requisitos (además de video-vox base)
+
+- **OPENAI_API_KEY** — en `.env` (transcripción con Whisper)
+- **APIFY_API_TOKEN** — en `.env` (búsqueda inteligente de imágenes)
+
+Ambas van en tu `.env`, ejemplo:
+```
+OPENAI_API_KEY=sk-...
+APIFY_API_TOKEN=apify_...
+```
+
+## 📊 Salida
+
+En `out/reel-editado-{nombre}.mp4`:
+- Video 9:16 (vertical)
+- Imágenes temáticas al inicio (1-3 según análisis)
+- Transiciones minimalistas
+- Audio original + opcional música de fondo
+
+También genera análisis JSON:
+- `*-transcript.json` — lo que dice el video
+- `*-analysis.json` — temática, tono, recomendaciones
+- `*-images.json` — imágenes descargadas
+- `*-edit-plan.json` — plan de edición exacto aplicado
+
+## 💡 Cómo decide qué editar
+
+El motor inteligente analiza:
+- **Temática** — ¿de qué trata?
+- **Tono** — ¿energético, calmado, educativo?
+- **Puntos clave** — dónde insertar visuals
+- **Estilo de imagen recomendado** — cartoon, foto real, infografía
+- **Minimalismo** — solo lo esencial
+
+Resultado: edición smart sin tocar manualmente nada.
+
+## 📝 Notas
+
+- La transcripción solo funciona bien con audio en español claro
+- Apify debe tener créditos disponibles (barato, ~0.01-0.05 USD por búsqueda)
+- OpenAI Whisper cuesta ~0.01 USD por minuto de video
+- La edición es **100% minimalista** — sin efectos innecesarios
+
+---
+
+## Notas (video-vox original)
 - **Marca**: colores, tag del canal y voz salen de `src/brand.json` (se llena en el onboarding). Editarlo re-configura todos los videos.
 - Costo aprox por video: imágenes Kie + voz/SFX ElevenLabs + 1 música Suno. Barato, pero recuérdalo al usuario si hace muchos.
 - Los SFX (`public/sfx/`) vienen incluidos; no hay que regenerarlos.
