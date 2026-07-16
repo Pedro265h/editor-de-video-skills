@@ -1,0 +1,14 @@
+node_modules
+out
+.DS_Store
+*.log
+
+# Secrets — nunca commitear
+.env
+.env.local
+
+# Recursos generados por video (audio/imágenes/música pesadas)
+public/media/
+
+# El guión concreto de cada video (se genera; el ejemplo sí se versiona)
+input/scenes.json

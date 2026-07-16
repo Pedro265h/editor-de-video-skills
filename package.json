@@ -1,0 +1,30 @@
+{
+  "name": "video-vox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shorts explicativos animados estilo Vox (cartoon + slides + voz + música + SFX) con Remotion",
+  "scripts": {
+    "dev": "remotion studio",
+    "studio": "remotion studio",
+    "assets": "node scripts/gen-video-assets.mjs",
+    "render": "remotion render Short out/video.mp4",
+    "still": "remotion still Short out/still.png --frame=40",
+    "test:apis": "node scripts/test-connections.mjs",
+    "gen:voice": "node scripts/generate-voice.mjs",
+    "gen:image": "node scripts/generate-image.mjs",
+    "gen:music": "node scripts/generate-music.mjs",
+    "gen:photos": "node scripts/fetch-photos.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.487",
+    "@remotion/google-fonts": "4.0.487",
+    "@remotion/transitions": "^4.0.487",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.487"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "typescript": "5.6.3"
+  }
+}

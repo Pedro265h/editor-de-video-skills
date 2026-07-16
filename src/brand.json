@@ -1,0 +1,16 @@
+{
+  "canal": "",
+  "handle": "",
+  "cta": "",
+  "sitio": "",
+  "mostrarTag": true,
+  "colores": {
+    "acento": "#FF5A1F",
+    "tinta": "#20180F",
+    "fondo": "#F4ECD6"
+  },
+  "voz": {
+    "provider": "elevenlabs",
+    "voiceId": ""
+  }
+}

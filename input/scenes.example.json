@@ -1,0 +1,41 @@
+{
+  "title": "Por qué crecen tus músculos",
+  "musicPrompt": "energetic upbeat motivational fitness documentary background instrumental, driving drums, punchy, positive, modern, no vocals, 120 BPM",
+  "scenes": [
+    {
+      "id": "01",
+      "keyword": "NO CRECEN EN EL GYM",
+      "narration": "Tus músculos no crecen en el gimnasio.",
+      "imagePrompt": "a muscular athletic person lifting a heavy barbell over the head, dynamic powerful pose, determined face, sweat",
+      "from": "left"
+    },
+    {
+      "id": "02",
+      "keyword": "MICRODESGARROS",
+      "narration": "Cuando entrenas, en realidad los estás rompiendo: cada repetición crea miles de microdesgarros en la fibra.",
+      "imagePrompt": "a close-up of a bundle of muscle fibers with tiny tears and rips appearing along the fibers, microscopic damage, small cracks",
+      "from": "bottom"
+    },
+    {
+      "id": "03",
+      "keyword": "MODO REPARACIÓN",
+      "narration": "Entonces tu cuerpo entra en modo reparación y activa células que reconstruyen esa fibra.",
+      "imagePrompt": "friendly little repair cells stitching and rebuilding a torn muscle fiber, tiny helper characters fixing the fiber, biology repair scene",
+      "from": "right"
+    },
+    {
+      "id": "04",
+      "keyword": "HIPERTROFIA",
+      "narration": "Pero no la deja igual: la reconstruye más gruesa y más fuerte. Eso es hipertrofia.",
+      "imagePrompt": "a thin muscle fiber transforming into a much thicker stronger muscle fiber, before and after comparison, big upward growth arrow",
+      "from": "diag"
+    },
+    {
+      "id": "05",
+      "keyword": "SOBRECARGA · PROTEÍNA · DESCANSO",
+      "narration": "Y solo pasa con tres cosas: sobrecarga, proteína y descanso. Si no duermes, no creces. Entrena, come, duerme.",
+      "imagePrompt": "three simple icons in a row: a dumbbell, a plate of protein food with steak and eggs, and a happy person sleeping with Zzz above the head",
+      "from": "bottom"
+    }
+  ]
+}
